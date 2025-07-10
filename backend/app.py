@@ -4,7 +4,7 @@ from typing import Optional, List
 from datetime import datetime, date
 from fastapi.middleware.cors import CORSMiddleware
 import requests
-
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -30,6 +30,10 @@ class Food(SQLModel, table=True):
     calories: float
     grams: float = Field(default=100)
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    protein_100g: Optional[float] = None
+    fat_100g: Optional[float] = None
+    carbs_100g: Optional[float] = None
+    calories_100g: Optional[float] = None
 
 sqlite_file_name = "aina.db"
 engine = create_engine(f"sqlite:///{sqlite_file_name}")
@@ -74,6 +78,11 @@ def get_food_from_fineli(food_name):
         'fat': extract_nutrient(nutrients, 80),
         'carbs': extract_nutrient(nutrients, 82),
         'calories': extract_nutrient(nutrients, 106),
+        # Also return per-100g values
+        'protein_100g': extract_nutrient(nutrients, 79),
+        'fat_100g': extract_nutrient(nutrients, 80),
+        'carbs_100g': extract_nutrient(nutrients, 82),
+        'calories_100g': extract_nutrient(nutrients, 106),
     }
 
 # --- API endpoints for your frontend ---
@@ -83,10 +92,9 @@ def get_foods():
     with Session(engine) as session:
         foods = session.exec(select(Food).order_by(Food.created_at.desc())).all()
         return foods
-    
+
 @app.get("/logs/by_day")
 def get_food_logs_by_day(date: date = Query(...)):
-    # Define the range: start of the day (00:00:00) to end of the day (23:59:59.999999)
     start_datetime = datetime.combine(date, datetime.min.time())
     end_datetime = datetime.combine(date, datetime.max.time())
     with Session(engine) as session:
@@ -119,7 +127,7 @@ def get_food_logs_by_day(date: date = Query(...)):
             "date": str(date),
             "foods": foods,
             "totals": totals
-        }   
+        }
 
 @app.post("/foods/", response_model=Food)
 def create_food(food: Food):
@@ -132,20 +140,30 @@ def create_food(food: Food):
                 food.fat = food.fat or fineli_data['fat']
                 food.carbs = food.carbs or fineli_data['carbs']
                 food.calories = food.calories or fineli_data['calories']
+                food.protein_100g = fineli_data['protein_100g']
+                food.fat_100g = fineli_data['fat_100g']
+                food.carbs_100g = fineli_data['carbs_100g']
+                food.calories_100g = fineli_data['calories_100g']
             else:
                 raise HTTPException(status_code=404, detail="Food not found in Fineli")
 
         if not food.grams:
             food.grams = 100  # Default to 100g if not set
 
+        # Set per-100g fields if not already set
+        if not (food.protein_100g and food.fat_100g and food.carbs_100g and food.calories_100g):
+            scale = 100.0 / food.grams if food.grams else 1.0
+            food.protein_100g = food.protein * scale
+            food.fat_100g = food.fat * scale
+            food.carbs_100g = food.carbs * scale
+            food.calories_100g = food.calories * scale
+
         # --- NEW: parse string created_at to datetime if needed ---
         if isinstance(food.created_at, str):
             try:
-                # Accept "YYYY-MM-DDTHH:mm"
                 food.created_at = datetime.fromisoformat(food.created_at)
             except Exception:
                 try:
-                    # Accept if missing seconds by adding ":00"
                     food.created_at = datetime.fromisoformat(food.created_at + ":00")
                 except Exception:
                     raise HTTPException(status_code=422, detail="Invalid created_at format")
@@ -153,6 +171,38 @@ def create_food(food: Food):
         if not food.created_at:
             food.created_at = datetime.utcnow()
 
+        session.add(food)
+        session.commit()
+        session.refresh(food)
+        return food
+
+# --- NEW: DELETE endpoint ---
+@app.delete("/foods/{food_id}", response_model=Food)
+def delete_food(food_id: int):
+    with Session(engine) as session:
+        food = session.get(Food, food_id)
+        if not food:
+            raise HTTPException(status_code=404, detail="Food not found")
+        session.delete(food)
+        session.commit()
+        return food
+
+# --- NEW: PUT endpoint for editing grams ---
+class UpdateGramsRequest(BaseModel):
+    grams: float
+
+@app.put("/foods/{food_id}", response_model=Food)
+def update_food_grams(food_id: int, update: UpdateGramsRequest):
+    with Session(engine) as session:
+        food = session.get(Food, food_id)
+        if not food:
+            raise HTTPException(status_code=404, detail="Food not found")
+        scale = update.grams / 100.0
+        food.grams = update.grams
+        food.protein = (food.protein_100g or 0) * scale
+        food.fat = (food.fat_100g or 0) * scale
+        food.carbs = (food.carbs_100g or 0) * scale
+        food.calories = (food.calories_100g or 0) * scale
         session.add(food)
         session.commit()
         session.refresh(food)
