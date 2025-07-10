@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from sqlmodel import Field, SQLModel, create_engine, Session, select
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from fastapi.middleware.cors import CORSMiddleware
 import requests
+
 
 app = FastAPI()
 
@@ -82,6 +83,43 @@ def get_foods():
     with Session(engine) as session:
         foods = session.exec(select(Food).order_by(Food.created_at.desc())).all()
         return foods
+    
+@app.get("/logs/by_day")
+def get_food_logs_by_day(date: date = Query(...)):
+    # Define the range: start of the day (00:00:00) to end of the day (23:59:59.999999)
+    start_datetime = datetime.combine(date, datetime.min.time())
+    end_datetime = datetime.combine(date, datetime.max.time())
+    with Session(engine) as session:
+        logs = session.exec(
+            select(Food)
+            .where(Food.created_at >= start_datetime, Food.created_at <= end_datetime)
+            .order_by(Food.created_at)
+        ).all()
+        totals = {
+            "protein": sum(log.protein for log in logs),
+            "fat": sum(log.fat for log in logs),
+            "carbs": sum(log.carbs for log in logs),
+            "calories": sum(log.calories for log in logs),
+            "grams": sum(log.grams for log in logs)
+        }
+        foods = [
+            {
+                "id": log.id,
+                "name": log.name,
+                "protein": log.protein,
+                "fat": log.fat,
+                "carbs": log.carbs,
+                "calories": log.calories,
+                "grams": log.grams,
+                "created_at": log.created_at
+            }
+            for log in logs
+        ]
+        return {
+            "date": str(date),
+            "foods": foods,
+            "totals": totals
+        }   
 
 @app.post("/foods/", response_model=Food)
 def create_food(food: Food):
