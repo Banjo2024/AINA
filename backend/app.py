@@ -35,6 +35,16 @@ class Food(SQLModel, table=True):
     carbs_100g: Optional[float] = None
     calories_100g: Optional[float] = None
 
+class Recipe(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    protein_100g: float
+    fat_100g: float
+    carbs_100g: float
+    calories_100g: float
+    # Optionally: add fields like description, author, ingredients later
+
+
 sqlite_file_name = "aina.db"
 engine = create_engine(f"sqlite:///{sqlite_file_name}")
 
@@ -92,6 +102,34 @@ def get_foods():
     with Session(engine) as session:
         foods = session.exec(select(Food).order_by(Food.created_at.desc())).all()
         return foods
+
+# Create a recipe
+@app.post("/recipes/", response_model=Recipe)
+def create_recipe(recipe: Recipe):
+    with Session(engine) as session:
+        session.add(recipe)
+        session.commit()
+        session.refresh(recipe)
+        return recipe
+
+# List/search recipes
+@app.get("/recipes/", response_model=List[Recipe])
+def list_recipes():
+    with Session(engine) as session:
+        recipes = session.exec(select(Recipe).order_by(Recipe.name)).all()
+        return recipes
+
+# (Optional) Delete a recipe
+@app.delete("/recipes/{recipe_id}", response_model=Recipe)
+def delete_recipe(recipe_id: int):
+    with Session(engine) as session:
+        recipe = session.get(Recipe, recipe_id)
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        session.delete(recipe)
+        session.commit()
+        return recipe
+
 
 @app.get("/logs/by_day")
 def get_food_logs_by_day(date: date = Query(...)):
