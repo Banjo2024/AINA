@@ -5,6 +5,12 @@ from datetime import datetime, date
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from pydantic import BaseModel
+class RecipeUpdateRequest(BaseModel):
+    name: str
+    protein_100g: float
+    fat_100g: float
+    carbs_100g: float
+    calories_100g: float
 
 app = FastAPI()
 
@@ -224,6 +230,24 @@ def delete_food(food_id: int):
         session.delete(food)
         session.commit()
         return food
+    
+# --- NEW: Edit Recipe endpoint ---
+
+@app.put("/recipes/{recipe_id}", response_model=Recipe)
+def update_recipe(recipe_id: int, update: RecipeUpdateRequest):
+    with Session(engine) as session:
+        recipe = session.get(Recipe, recipe_id)
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        recipe.name = update.name
+        recipe.protein_100g = update.protein_100g
+        recipe.fat_100g = update.fat_100g
+        recipe.carbs_100g = update.carbs_100g
+        recipe.calories_100g = update.calories_100g
+        session.add(recipe)
+        session.commit()
+        session.refresh(recipe)
+        return recipe
 
 # --- NEW: PUT endpoint for editing grams ---
 class UpdateGramsRequest(BaseModel):
