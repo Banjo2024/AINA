@@ -1,10 +1,12 @@
 from fastapi import FastAPI, HTTPException, Query
 from sqlmodel import Field, SQLModel, create_engine, Session, select
+from sqlalchemy import or_
 from typing import Optional, List
 from datetime import datetime, date
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from pydantic import BaseModel
+
 class RecipeUpdateRequest(BaseModel):
     name: str
     protein_100g: float
@@ -29,7 +31,8 @@ app.add_middleware(
 # DB Model
 class Food(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str
+    name_fi: Optional[str] = None
+    name_en: Optional[str] = None
     protein: float
     fat: float
     carbs: float
@@ -48,8 +51,6 @@ class Recipe(SQLModel, table=True):
     fat_100g: float
     carbs_100g: float
     calories_100g: float
-    # Optionally: add fields like description, author, ingredients later
-
 
 sqlite_file_name = "aina.db"
 engine = create_engine(f"sqlite:///{sqlite_file_name}")
@@ -61,14 +62,21 @@ def create_db_and_tables():
 def on_startup():
     create_db_and_tables()
 
-# --- Fineli integration for fallback/autofill ---
+# --- Fineli integration ---
 def extract_nutrient(nutrients, nutrient_id):
     val = next((c.get("valuePer100g") for c in nutrients if c["nutrientId"] == nutrient_id), None)
     return float(val) if val is not None else 0.0
 
-def get_food_from_fineli(food_name):
-    url = f"https://fineli.fi/fineli/api/v1/foods?q={food_name}"
-    response = requests.get(url)
+def get_food_from_fineli(food_name, lang='fi'):
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        )
+    }
+    url = f"https://fineli.fi/fineli/api/v1/foods?q={food_name}&lang={lang}"
+    response = requests.get(url, headers=headers)
     if not response.ok:
         print("Fineli API error:", response.status_code, response.text)
         return None
@@ -82,34 +90,89 @@ def get_food_from_fineli(food_name):
         return None
     food = foods[0]
     food_id = food['id']
-    detail_response = requests.get(f"https://fineli.fi/fineli/api/v1/foods/{food_id}")
+    detail_response = requests.get(f"https://fineli.fi/fineli/api/v1/foods/{food_id}", headers=headers)
     if not detail_response.ok:
         print("Fineli food detail error:", detail_response.status_code, detail_response.text)
         return None
     detail = detail_response.json()
     nutrients = detail.get("nutrients", [])
+    name_fi = detail["name"].get("fi", "")
+    name_en = detail["name"].get("en", name_fi)
     return {
-        'name': detail["name"]["fi"] if "fi" in detail["name"] else detail["name"]["en"],
+        'name_fi': name_fi,
+        'name_en': name_en,
         'protein': extract_nutrient(nutrients, 79),
         'fat': extract_nutrient(nutrients, 80),
         'carbs': extract_nutrient(nutrients, 82),
         'calories': extract_nutrient(nutrients, 106),
-        # Also return per-100g values
         'protein_100g': extract_nutrient(nutrients, 79),
         'fat_100g': extract_nutrient(nutrients, 80),
         'carbs_100g': extract_nutrient(nutrients, 82),
         'calories_100g': extract_nutrient(nutrients, 106),
     }
 
-# --- API endpoints for your frontend ---
+# --- Fineli search endpoint ---
+@app.get("/search/foods/")
+def search_foods(q: str = Query(...), lang: str = Query('fi')):
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        )
+    }
+    url = f"https://fineli.fi/fineli/api/v1/foods?q={q}&lang={lang}"
+    response = requests.get(url, headers=headers)
+    if not response.ok:
+        print("Fineli API error:", response.status_code, response.text)
+        raise HTTPException(status_code=404, detail="Food not found in Fineli")
+    try:
+        foods = response.json()
+    except Exception as e:
+        print("Fineli API did not return JSON:", response.text)
+        raise HTTPException(status_code=500, detail="Fineli API error")
+    # Return first 10 results, with both fi and en names
+    result = []
+    for food in foods[:10]:
+        food_id = food['id']
+        detail_response = requests.get(f"https://fineli.fi/fineli/api/v1/foods/{food_id}", headers=headers)
+        if not detail_response.ok:
+            continue
+        detail = detail_response.json()
+        name_fi = detail["name"].get("fi", "")
+        name_en = detail["name"].get("en", name_fi)
+        result.append({
+            "id": food_id,
+            "name_fi": name_fi,
+            "name_en": name_en,
+        })
+    if not result:
+        raise HTTPException(status_code=404, detail="No foods found")
+    return result
 
+# --- UPDATED: foods endpoint with search and language ---
 @app.get("/foods/", response_model=List[Food])
-def get_foods():
+def get_foods(q: Optional[str] = Query(None), lang: str = Query('fi')):
     with Session(engine) as session:
-        foods = session.exec(select(Food).order_by(Food.created_at.desc())).all()
+        stmt = select(Food).order_by(Food.created_at.desc())
+        if q:
+            if lang == 'en':
+                stmt = stmt.where(Food.name_en.ilike(f"%{q}%"))
+            else:
+                stmt = stmt.where(Food.name_fi.ilike(f"%{q}%"))
+        foods = session.exec(stmt).all()
         return foods
 
-# Create a recipe
+# --- UPDATED: recipes endpoint with search ---
+@app.get("/recipes/", response_model=List[Recipe])
+def list_recipes(q: Optional[str] = Query(None)):
+    with Session(engine) as session:
+        stmt = select(Recipe).order_by(Recipe.name)
+        if q:
+            stmt = stmt.where(Recipe.name.ilike(f"%{q}%"))
+        recipes = session.exec(stmt).all()
+        return recipes
+
 @app.post("/recipes/", response_model=Recipe)
 def create_recipe(recipe: Recipe):
     with Session(engine) as session:
@@ -118,14 +181,6 @@ def create_recipe(recipe: Recipe):
         session.refresh(recipe)
         return recipe
 
-# List/search recipes
-@app.get("/recipes/", response_model=List[Recipe])
-def list_recipes():
-    with Session(engine) as session:
-        recipes = session.exec(select(Recipe).order_by(Recipe.name)).all()
-        return recipes
-
-# (Optional) Delete a recipe
 @app.delete("/recipes/{recipe_id}", response_model=Recipe)
 def delete_recipe(recipe_id: int):
     with Session(engine) as session:
@@ -135,7 +190,6 @@ def delete_recipe(recipe_id: int):
         session.delete(recipe)
         session.commit()
         return recipe
-
 
 @app.get("/logs/by_day")
 def get_food_logs_by_day(date: date = Query(...)):
@@ -157,7 +211,8 @@ def get_food_logs_by_day(date: date = Query(...)):
         foods = [
             {
                 "id": log.id,
-                "name": log.name,
+                "name_fi": log.name_fi,
+                "name_en": log.name_en,
                 "protein": log.protein,
                 "fat": log.fat,
                 "carbs": log.carbs,
@@ -174,12 +229,14 @@ def get_food_logs_by_day(date: date = Query(...)):
         }
 
 @app.post("/foods/", response_model=Food)
-def create_food(food: Food):
+def create_food(food: Food, lang: str = Query('fi')):
     with Session(engine) as session:
-        # Fill missing macros from Fineli if necessary
+        # If any core macros are missing, autofill from Fineli using selected lang
         if not all([food.protein, food.fat, food.carbs, food.calories]):
-            fineli_data = get_food_from_fineli(food.name)
+            fineli_data = get_food_from_fineli(food.name_fi or food.name_en or "", lang=lang)
             if fineli_data:
+                food.name_fi = food.name_fi or fineli_data['name_fi']
+                food.name_en = food.name_en or fineli_data['name_en']
                 food.protein = food.protein or fineli_data['protein']
                 food.fat = food.fat or fineli_data['fat']
                 food.carbs = food.carbs or fineli_data['carbs']
@@ -202,7 +259,7 @@ def create_food(food: Food):
             food.carbs_100g = food.carbs * scale
             food.calories_100g = food.calories * scale
 
-        # --- NEW: parse string created_at to datetime if needed ---
+        # Parse created_at if string
         if isinstance(food.created_at, str):
             try:
                 food.created_at = datetime.fromisoformat(food.created_at)
@@ -220,7 +277,6 @@ def create_food(food: Food):
         session.refresh(food)
         return food
 
-# --- NEW: DELETE endpoint ---
 @app.delete("/foods/{food_id}", response_model=Food)
 def delete_food(food_id: int):
     with Session(engine) as session:
@@ -230,26 +286,7 @@ def delete_food(food_id: int):
         session.delete(food)
         session.commit()
         return food
-    
-# --- NEW: Edit Recipe endpoint ---
 
-@app.put("/recipes/{recipe_id}", response_model=Recipe)
-def update_recipe(recipe_id: int, update: RecipeUpdateRequest):
-    with Session(engine) as session:
-        recipe = session.get(Recipe, recipe_id)
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-        recipe.name = update.name
-        recipe.protein_100g = update.protein_100g
-        recipe.fat_100g = update.fat_100g
-        recipe.carbs_100g = update.carbs_100g
-        recipe.calories_100g = update.calories_100g
-        session.add(recipe)
-        session.commit()
-        session.refresh(recipe)
-        return recipe
-
-# --- NEW: PUT endpoint for editing grams ---
 class UpdateGramsRequest(BaseModel):
     grams: float
 
