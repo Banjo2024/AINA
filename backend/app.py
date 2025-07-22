@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException, Query
 from sqlmodel import Field, SQLModel, create_engine, Session, select
-from sqlalchemy import or_
 from typing import Optional, List
 from datetime import datetime, date
 from fastapi.middleware.cors import CORSMiddleware
+from collections import defaultdict
 import requests
 from pydantic import BaseModel
 
@@ -16,7 +16,7 @@ class RecipeUpdateRequest(BaseModel):
 
 app = FastAPI()
 
-# CORS (for localhost and 127.0.0.1)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -28,7 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# DB Model
+# DB Models
 class Food(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name_fi: Optional[str] = None
@@ -131,7 +131,6 @@ def search_foods(q: str = Query(...), lang: str = Query('fi')):
     except Exception as e:
         print("Fineli API did not return JSON:", response.text)
         raise HTTPException(status_code=500, detail="Fineli API error")
-    # Return first 10 results, with both fi and en names
     result = []
     for food in foods[:10]:
         food_id = food['id']
@@ -150,7 +149,7 @@ def search_foods(q: str = Query(...), lang: str = Query('fi')):
         raise HTTPException(status_code=404, detail="No foods found")
     return result
 
-# --- UPDATED: foods endpoint with search and language ---
+# --- Foods endpoint with search and language ---
 @app.get("/foods/", response_model=List[Food])
 def get_foods(q: Optional[str] = Query(None), lang: str = Query('fi')):
     with Session(engine) as session:
@@ -163,7 +162,7 @@ def get_foods(q: Optional[str] = Query(None), lang: str = Query('fi')):
         foods = session.exec(stmt).all()
         return foods
 
-# --- UPDATED: recipes endpoint with search ---
+# --- Recipes endpoint with search ---
 @app.get("/recipes/", response_model=List[Recipe])
 def list_recipes(q: Optional[str] = Query(None)):
     with Session(engine) as session:
@@ -247,19 +246,14 @@ def create_food(food: Food, lang: str = Query('fi')):
                 food.calories_100g = fineli_data['calories_100g']
             else:
                 raise HTTPException(status_code=404, detail="Food not found in Fineli")
-
         if not food.grams:
             food.grams = 100  # Default to 100g if not set
-
-        # Set per-100g fields if not already set
         if not (food.protein_100g and food.fat_100g and food.carbs_100g and food.calories_100g):
             scale = 100.0 / food.grams if food.grams else 1.0
             food.protein_100g = food.protein * scale
             food.fat_100g = food.fat * scale
             food.carbs_100g = food.carbs * scale
             food.calories_100g = food.calories * scale
-
-        # Parse created_at if string
         if isinstance(food.created_at, str):
             try:
                 food.created_at = datetime.fromisoformat(food.created_at)
@@ -268,10 +262,8 @@ def create_food(food: Food, lang: str = Query('fi')):
                     food.created_at = datetime.fromisoformat(food.created_at + ":00")
                 except Exception:
                     raise HTTPException(status_code=422, detail="Invalid created_at format")
-
         if not food.created_at:
             food.created_at = datetime.utcnow()
-
         session.add(food)
         session.commit()
         session.refresh(food)
@@ -306,3 +298,129 @@ def update_food_grams(food_id: int, update: UpdateGramsRequest):
         session.commit()
         session.refresh(food)
         return food
+
+@app.get("/logs/by_range")
+def get_food_logs_by_range(start: date = Query(...), end: date = Query(...)):
+    """
+    Returns daily totals of macros between start and end dates (inclusive).
+    Output: List of dicts with 'date', 'protein', 'fat', 'carbs', 'calories', 'grams'
+    """
+    start_datetime = datetime.combine(start, datetime.min.time())
+    end_datetime = datetime.combine(end, datetime.max.time())
+    with Session(engine) as session:
+        logs = session.exec(
+            select(Food)
+            .where(Food.created_at >= start_datetime, Food.created_at <= end_datetime)
+            .order_by(Food.created_at)
+        ).all()
+    daily = defaultdict(lambda: {"protein": 0, "fat": 0, "carbs": 0, "calories": 0, "grams": 0})
+    for log in logs:
+        day = log.created_at.date().isoformat()
+        daily[day]["protein"] += log.protein
+        daily[day]["fat"] += log.fat
+        daily[day]["carbs"] += log.carbs
+        daily[day]["calories"] += log.calories
+        daily[day]["grams"] += log.grams
+    return [
+        {"date": day, **vals}
+        for day, vals in sorted(daily.items())
+    ]
+
+@app.get("/logs/summary")
+def get_macros_summary(start: date = Query(...), end: date = Query(...)):
+    start_datetime = datetime.combine(start, datetime.min.time())
+    end_datetime = datetime.combine(end, datetime.max.time())
+    with Session(engine) as session:
+        logs = session.exec(
+            select(Food)
+            .where(Food.created_at >= start_datetime, Food.created_at <= end_datetime)
+        ).all()
+    protein = sum(log.protein for log in logs)
+    fat = sum(log.fat for log in logs)
+    carbs = sum(log.carbs for log in logs)
+    total = protein + fat + carbs
+    perc = {
+        "protein": round(100 * protein / total, 1) if total else 0,
+        "carbs": round(100 * carbs / total, 1) if total else 0,
+        "fat": round(100 * fat / total, 1) if total else 0,
+    }
+    return {
+        "protein": protein,
+        "carbs": carbs,
+        "fat": fat,
+        "percentages": perc
+    }
+
+# --- NEW: AGGREGATE ENDPOINT ---
+@app.get("/logs/aggregate")
+def get_macros_aggregate(
+    start: date = Query(...),
+    end: date = Query(...),
+    group_by: str = Query("day", pattern="^(day|week|month)$")
+):
+    start_datetime = datetime.combine(start, datetime.min.time())
+    end_datetime = datetime.combine(end, datetime.max.time())
+    with Session(engine) as session:
+        logs = session.exec(
+            select(Food)
+            .where(Food.created_at >= start_datetime, Food.created_at <= end_datetime)
+            .order_by(Food.created_at)
+        ).all()
+
+    if group_by == "day":
+        daily = defaultdict(lambda: {"protein": 0, "fat": 0, "carbs": 0, "calories": 0, "grams": 0})
+        for log in logs:
+            day = log.created_at.date().isoformat()
+            daily[day]["protein"] += log.protein
+            daily[day]["fat"] += log.fat
+            daily[day]["carbs"] += log.carbs
+            daily[day]["calories"] += log.calories
+            daily[day]["grams"] += log.grams
+        return [
+            {"date": day, **vals}
+            for day, vals in sorted(daily.items())
+        ]
+
+    elif group_by == "week":
+        weekly = defaultdict(lambda: {"protein": 0, "fat": 0, "carbs": 0, "calories": 0, "grams": 0, "dates": set()})
+        for log in logs:
+            iso = log.created_at.isocalendar()
+            week_key = f"{iso[0]}-W{str(iso[1]).zfill(2)}"
+            weekly[week_key]["protein"] += log.protein
+            weekly[week_key]["fat"] += log.fat
+            weekly[week_key]["carbs"] += log.carbs
+            weekly[week_key]["calories"] += log.calories
+            weekly[week_key]["grams"] += log.grams
+            weekly[week_key]["dates"].add(log.created_at.date())
+        result = []
+        for week_key, vals in sorted(weekly.items()):
+            dates = sorted(vals["dates"])
+            start_date = dates[0].isoformat() if dates else None
+            end_date = dates[-1].isoformat() if dates else None
+            item = { "week": week_key, "start": start_date, "end": end_date }
+            item.update({k: v for k, v in vals.items() if k != "dates"})
+            result.append(item)
+        return result
+
+    elif group_by == "month":
+        monthly = defaultdict(lambda: {"protein": 0, "fat": 0, "carbs": 0, "calories": 0, "grams": 0, "dates": set()})
+        for log in logs:
+            m_key = log.created_at.strftime("%Y-%m")
+            monthly[m_key]["protein"] += log.protein
+            monthly[m_key]["fat"] += log.fat
+            monthly[m_key]["carbs"] += log.carbs
+            monthly[m_key]["calories"] += log.calories
+            monthly[m_key]["grams"] += log.grams
+            monthly[m_key]["dates"].add(log.created_at.date())
+        result = []
+        for m_key, vals in sorted(monthly.items()):
+            dates = sorted(vals["dates"])
+            start_date = dates[0].isoformat() if dates else None
+            end_date = dates[-1].isoformat() if dates else None
+            item = { "month": m_key, "start": start_date, "end": end_date }
+            item.update({k: v for k, v in vals.items() if k != "dates"})
+            result.append(item)
+        return result
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid group_by parameter (day|week|month)")
