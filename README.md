@@ -87,21 +87,6 @@ cd ../frontend
 npm start
 ```
 
-Features
-- Log foods with portion size and date/time
-
-- See daily, weekly, monthly macro trends
-
-- Compare periods (days, weeks, months)
-
-- Set and track macro goals
-
-- See macro percentages for any period (pie chart)
-
-- Flexible graph visualizations (bar/line/pie)
-
-- (Coming soon) CGM (glucose) integration & AI meal suggestions
-
 ## Customization
 
 - Edit macro goals in the app UI
@@ -115,6 +100,8 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 ## Licence
 
 MIT
+
+##
 
 Repository: https://github.com/Banjo2024/AINA
 
