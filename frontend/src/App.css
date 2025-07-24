@@ -1,0 +1,331 @@
+/* ======== RESET & BASE ======== */
+body, h1, h2, h3, h4, h5, h6, p, ul {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  background: #f6f7fb;
+  color: #222;
+  min-height: 100vh;
+}
+
+/* ======== CONTAINERS ======== */
+.app-container,
+.page-container {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.section-card,
+.card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px #0001;
+  padding: 32px;
+  margin-bottom: 18px;
+}
+
+/* For smaller cards (e.g. in logger details) */
+.section-card {
+  padding: 18px 18px 16px 18px;
+  border-radius: 12px;
+}
+
+/* ======== HEADINGS ======== */
+.heading-main {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.heading-date {
+  color: #666;
+  font-size: 16px;
+}
+
+.heading-section {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  margin-top: 18px;
+}
+
+/* ======== SUMMARY BADGES ======== */
+.summary-row {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.summary-badge {
+  background: #f7f8fd;
+  padding: 5px 14px;
+  border-radius: 7px;
+  font-size: 17px;
+  font-weight: 500;
+  color: #2a4178;
+}
+
+/* ======== BUTTONS ======== */
+.btn-main {
+  padding: 8px 20px;
+  background: #006ee6;
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 16px;
+  text-decoration: none;
+  box-shadow: 0 2px 6px #006ee622;
+  border: none;
+  cursor: pointer;
+  transition: background 0.16s, transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 110px;
+  min-height: 38px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  margin-bottom: 0;
+}
+
+.btn-main:hover,
+.btn-main:focus {
+  background: #0057b8;
+  transform: translateY(-2px) scale(1.02);
+}
+
+.btn-small,
+.btn-edit {
+  padding: 3px 10px;
+  background: #eee;
+  color: #333;
+  border: 1px solid #bbb;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-left: 5px;
+  margin-bottom: 2px;
+  transition: background 0.16s;
+}
+
+.btn-small:hover,
+.btn-edit:hover,
+.btn-small:focus,
+.btn-edit:focus {
+  background: #f7f7f7;
+}
+
+.btn-small.active,
+.btn-small.active:focus,
+.btn-small.active:hover {
+  background: #dbeffe;
+  border-color: #5ca0fa;
+  color: #115ba6;
+  font-weight: bold;
+}
+
+/* ======== INPUTS & FORMS ======== */
+input,
+.input,
+input[type="number"],
+input[type="date"],
+input[type="datetime-local"] {
+  font-size: 1em;
+  padding: 7px 10px;
+  border: 1px solid #bbb;
+  border-radius: 5px;
+  margin-right: 4px;
+  margin-bottom: 3px;
+}
+
+input[type="number"] {
+  width: 85px;
+}
+
+input[type="date"],
+input[type="datetime-local"] {
+  min-width: 150px;
+}
+
+/* Focus ring for accessibility */
+input:focus,
+button:focus {
+  outline: 2px solid #5ca0fa;
+  outline-offset: 1px;
+}
+
+/* ======== FLEX HELPERS ======== */
+.flex-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.action-row {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+/* ======== LISTS & LOGS ======== */
+ul.meal-list,
+ul.food-log {
+  padding-left: 18px;
+  font-size: 16px;
+  margin: 0;
+}
+
+.meal-time {
+  color: #888;
+}
+
+.text-muted {
+  color: #aaa;
+}
+
+/* ======== INFO BOXES ======== */
+.info-box {
+  margin-top: 28px;
+  color: #426;
+  font-size: 16px;
+  font-style: italic;
+  background: #e8f4fc;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.card-info {
+  background: #eef;
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-size: 1.08em;
+}
+
+/* ======== GRAPH BOX ======== */
+.graph-box {
+  margin: 14px 0 10px 0;
+  background: #f7f8fd;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+/* ======== SUGGESTIONS DROPDOWN ======== */
+.suggestion-list {
+  position: absolute;
+  left: 0; right: 0;
+  z-index: 3;
+  background: white;
+  box-shadow: 0 3px 8px #0001;
+  list-style: none;
+  margin: 0; padding: 0;
+}
+
+.suggestion-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.suggestion-item:hover,
+.suggestion-item:focus {
+  background: #f6f7fb;
+}
+
+/* ======== LOADER SPINNER ======== */
+.loader {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  border: 3px solid #c2d4f6;
+  border-top: 3px solid #4285f4;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg);}
+  100% { transform: rotate(360deg);}
+}
+
+/* ======== EMPTY STATE ======== */
+.empty-log {
+  color: #888;
+  text-align: center;
+  padding: 12px 0;
+  font-style: italic;
+}
+
+/* ======== RESPONSIVE ======== */
+@media (max-width: 600px) {
+  .app-container, .page-container, .card, .section-card {
+    padding: 14px;
+    border-radius: 10px;
+  }
+  .btn-main {
+    padding: 8px 12px;
+    font-size: 15px;
+    min-width: 85px;
+    min-height: 30px;
+  }
+  .action-row {
+    gap: 10px;
+  }
+  .summary-row {
+    gap: 10px;
+    font-size: 15px;
+    flex-wrap: wrap;
+  }
+  .summary-badge {
+    padding: 3px 7px;
+    font-size: 15px;
+  }
+}
+
+/* ======== COMPARISON COLORS (TrendsPage) ======== */
+.comparison-up {
+  color: #18853b;
+  font-weight: 600;
+}
+.comparison-down {
+  color: #db4437;
+  font-weight: 600;
+}
+.comparison-neutral {
+  color: #666;
+  font-weight: 600;
+}
+
+/* ======== COMPACT TABLES ======== */
+.table-compact {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 15px;
+}
+.table-compact th,
+.table-compact td {
+  padding: 7px 6px;
+  border-bottom: 1px solid #e4ece9;
+}
+.table-compact th {
+  font-weight: 600;
+  background: #f2f9f6;
+  color: #33664a;
+  text-align: center;
+}
+.table-compact td {
+  text-align: center;
+}
