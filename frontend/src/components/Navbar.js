@@ -37,6 +37,7 @@ function Navbar() {
         <Link to="/food-logger" style={navLinkStyle(location.pathname === "/food-logger")}>Log Food</Link>
         <Link to="/recipes" style={navLinkStyle(location.pathname === "/recipes")}>Recipes</Link>
         <Link to="/trends" style={navLinkStyle(location.pathname === "/trends")}>Trends</Link>
+        <Link to="/glucose" style={navLinkStyle(location.pathname === "/glucose")}>Glucose</Link>
         <Link to="/profile" style={navLinkStyle(location.pathname === "/profile")}>Profile</Link>
       </div>
     </nav>

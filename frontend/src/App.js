@@ -3,6 +3,7 @@ import HomePage from "./pages/HomePage";
 import FoodLoggerPage from "./pages/FoodLoggerPage";
 import RecipesPage from "./pages/RecipesPage";
 import TrendsPage from './pages/TrendsPage';
+import GlucosePage from './pages/GlucosePage';
 import Navbar from "./components/Navbar"; // Import the Navbar component
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
         <Route path="/food-logger" element={<FoodLoggerPage />} />
         <Route path="/recipes" element={<RecipesPage />} />
         <Route path="/trends" element={<TrendsPage />} />
+        <Route path="/glucose" element={<GlucosePage />} />
 
         {/* You can add more routes here, like Trends, Profile, etc. */}
       </Routes>

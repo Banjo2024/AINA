@@ -13,7 +13,7 @@ Built with **React** (frontend) and **FastAPI** (backend).
 - **Compare Periods:** See your progress over different weeks or months.
 - **Interactive Graphs:** Toggle which macros to view, filter by time range.
 - **Fineli Integration:** Pull nutrition info from Finland’s national food database.
-- **Future plans:** Glucose tracking, AI-powered meal suggestions, and more!
+- **Nightscout Integration:** Import and view your glucose readings.
 
 ---
 
@@ -85,6 +85,22 @@ Start the frontend development server
 ```bash
 cd ../frontend
 npm start
+```
+
+### 5. Nightscout integration
+
+Create a `.env` file in the project root based on `.env.example` and provide your Nightscout URL and API token:
+
+```bash
+cp .env.example .env
+echo "NIGHTSCOUT_URL=https://<your-nightscout>" >> .env
+echo "NIGHTSCOUT_TOKEN=<api-token>" >> .env
+```
+
+To import the latest glucose readings run:
+
+```bash
+curl -X POST http://127.0.0.1:8000/import/glucose
 ```
 
 ## Customization
