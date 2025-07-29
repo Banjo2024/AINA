@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
 import requests
 from pydantic import BaseModel
+from config import NIGHTSCOUT_URL, NIGHTSCOUT_TOKEN
 
 class RecipeUpdateRequest(BaseModel):
     name: str
@@ -51,6 +52,12 @@ class Recipe(SQLModel, table=True):
     fat_100g: float
     carbs_100g: float
     calories_100g: float
+
+class GlucoseReading(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    timestamp: datetime
+    glucose: float
+    raw: Optional[float] = None
 
 sqlite_file_name = "aina.db"
 engine = create_engine(f"sqlite:///{sqlite_file_name}")
@@ -424,3 +431,47 @@ def get_macros_aggregate(
 
     else:
         raise HTTPException(status_code=400, detail="Invalid group_by parameter (day|week|month)")
+
+
+# --- Glucose integration ---
+
+@app.post("/import/glucose")
+def import_glucose(count: int = 50):
+    if not NIGHTSCOUT_URL:
+        raise HTTPException(status_code=500, detail="Nightscout URL not configured")
+    url = f"{NIGHTSCOUT_URL.rstrip('/')}/api/v1/entries.json?count={count}"
+    if NIGHTSCOUT_TOKEN:
+        url += f"&token={NIGHTSCOUT_TOKEN}"
+    resp = requests.get(url)
+    if not resp.ok:
+        raise HTTPException(status_code=500, detail="Failed to fetch Nightscout data")
+    entries = resp.json()
+    imported = 0
+    with Session(engine) as session:
+        for e in entries:
+            ts = datetime.fromtimestamp(e.get("date", 0) / 1000)
+            exists = session.exec(select(GlucoseReading).where(GlucoseReading.timestamp == ts)).first()
+            if exists:
+                continue
+            r = GlucoseReading(timestamp=ts, glucose=e.get("sgv"), raw=e.get("unfiltered"))
+            session.add(r)
+            imported += 1
+        session.commit()
+    return {"imported": imported}
+
+
+@app.get("/glucose/latest", response_model=Optional[GlucoseReading])
+def glucose_latest():
+    with Session(engine) as session:
+        stmt = select(GlucoseReading).order_by(GlucoseReading.timestamp.desc())
+        return session.exec(stmt).first()
+
+
+@app.get("/glucose/range", response_model=List[GlucoseReading])
+def glucose_range(start: datetime, end: datetime):
+    with Session(engine) as session:
+        stmt = select(GlucoseReading).where(
+            GlucoseReading.timestamp >= start,
+            GlucoseReading.timestamp <= end
+        ).order_by(GlucoseReading.timestamp)
+        return session.exec(stmt).all()
